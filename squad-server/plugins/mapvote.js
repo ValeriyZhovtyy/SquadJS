@@ -1,5 +1,6 @@
 import BasePlugin from './base-plugin.js';
 import Logger from 'core/logger';
+import { Layers } from './layers/index.js';
 
 export default class MapVote extends BasePlugin {
   static get description() {
@@ -15,6 +16,7 @@ export default class MapVote extends BasePlugin {
     this.autoStartMapVoteTimeout = null;
     this.autoRepeatBroadcastTimeout = null;
     this.layersHistory = [];
+    this.nextLayer = null;
   }
 
   static get defaultEnabled() {
@@ -94,7 +96,13 @@ export default class MapVote extends BasePlugin {
 
     // no vote yet -> init new
     if (this.autoStartMapVoteTimeout) clearTimeout(this.autoStartMapVoteTimeout);
+    
+    await Layers.pull();
+    const nextMap = await this.server.rcon.getNextMap();
+    this.nextLayer = await Layers.getLayerByName(nextMap.layer);
     const layersList = await this.getRandomLayers(5);
+    layersList.splice(0, 0, this.nextLayer);
+
     Logger.verbose('MapVote', 1, `initMapVote for getLayers: ${layersList}`);
     this.mapVote = {
       layers: layersList,
@@ -162,7 +170,9 @@ export default class MapVote extends BasePlugin {
       this.mapVote.result = sortedResults[0].layer;
       this.memorizeLayer(this.mapVote.result);
       this.broadcastMapVoteResults(sortedResults);
-      this.server.rcon.execute(`AdminSetNextLayer ${this.mapVote.result}`);
+        if(this.mapVote.result.layerid != this.nextLayer.layerid){
+            this.server.rcon.execute(`AdminSetNextLayer ${this.mapVote.result}`);
+        }
     } else {
       this.server.rcon.broadcast('Vote finished, none of the maps have enough votes');
       this.mapVote = null; // allows manual map vote restart, if no map won
